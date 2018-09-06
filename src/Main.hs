@@ -26,7 +26,9 @@ data Game = Game { gameBoard :: Board
 n :: Int
 n = 25
 
-initialGame = Game { gameBoard = (array indexRange $ zip (range indexRange) (repeat (Just Unrevealed))) // [((1, 3), Just Revealed)]
+initialGame = Game { gameBoard = (array indexRange $ zip (range indexRange) (repeat (Just Unrevealed))) // [ ((1, 3), Just Revealed)
+                                                                                                           , ((1, 4), Just Mine)
+                                                                                                           , ((1, 5), Just Flagged)]
                    , gameState = Running
                    , gameCellState = Unrevealed -- | add MinesFound
                    , gameMinesFound = Found
@@ -37,13 +39,17 @@ boardAsRunningPicture board =
     pictures [ color boardGridColor $ boardGrid
              , color unrevealedColor $ unrevealedCellsOfBoard board
              , color revealedColor $ revealedCellsOfBoard board
+             , color mineColor $ mineCellOfBoard board
+             , color flaggedColor $ flaggedCellsOfBoard board
              ]
 
 boardGridColor = makeColorI 0 0 0 255
 foundColor = makeColorI 50 100 255 255
 diedColor = makeColorI 255 50 50 255
 unrevealedColor = makeColorI 173 173 173 255
-revealedColor = makeColorI 221 221 221 255
+revealedColor = makeColorI 0 0 255 255 --221 221 221 255
+mineColor = makeColorI 0 0 0 255
+flaggedColor = makeColorI 255 0 0 255
 
 outcomeColor (Just Found) = foundColor
 outcomeColor (Just Died) = diedColor
@@ -58,14 +64,20 @@ unrevealedCell = rectangleSolid side 24.0
     where side = min cellWidth cellHeight * 0.95
 
 revealedCell :: Picture
-revealedCell = rectangleSolid side 24.0
-    where side = min cellWidth cellHeight * 0.95
+revealedCell = translate ( cellWidth * (-0.2) )
+                         ( cellHeight * (-0.3) )
+                         ( scale 0.15 0.15 (text "5") ) -- ^ change to cellWidth and cellHeight
 
 flaggedCell :: Picture
-flaggedCell = Blank
+flaggedCell = pictures [ ( translate ( cellWidth * (-0.15) ) ( cellHeight * (-0.05) ) ( rotate 90.0 $ rectangleSolid (min (cellWidth * 0.9) (cellHeight * 0.9) * 0.75) 2.0 ) )
+                       , ( translate ( cellWidth * 0.10 ) ( cellHeight * 0.01) (rotate (-30.0) $ rectangleSolid side 2.0))
+                       , ( translate ( cellWidth * 0.10 ) ( cellHeight * 0.2) (rotate (30.0) $ rectangleSolid side 2.0))
+                       ]
+          where side = min (cellWidth * 0.6) (cellHeight * 0.6) * 0.75
 
 mineCell :: Picture
-mineCell = Blank
+mineCell = circleSolid radius
+    where radius = min cellWidth cellHeight * 0.25
 
 cellsOfBoard :: Board -> Cell -> Picture -> Picture
 cellsOfBoard board cell cellPicture =
@@ -126,7 +138,12 @@ playerTurn game cellCoord
     | otherwise = game
     where board = gameBoard game
 
-
+rightClick :: Game -> (Int, Int) -> Game
+rightClick game cellCoord
+    | isCoordCorrect cellCoord && board ! cellCoord == Just Unrevealed =
+        game { gameBoard = board // [(cellCoord, Just Flagged)] }
+    | otherwise = game
+    where board = gameBoard game
 
 mousePosAsCellCoord :: (Float, Float) -> (Int, Int)
 mousePosAsCellCoord (x, y) = ( floor ((y + (fromIntegral screenHeight * 0.5)) / cellHeight)
@@ -137,6 +154,11 @@ updateGame (EventKey (MouseButton LeftButton) Up _ mousePos) game =
     case gameState game of
       Running -> playerTurn game $ mousePosAsCellCoord mousePos
       GameOver _ -> initialGame
+
+updateGame (EventKey (MouseButton RightButton) Up _ mousePos) game =
+    case gameState game of
+      Running -> rightClick game $ mousePosAsCellCoord mousePos
+
 updateGame _ game = game
 
 -- Game
