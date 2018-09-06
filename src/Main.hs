@@ -4,6 +4,8 @@ import Graphics.Gloss
 import Graphics.Gloss.Data.Color
 import Data.Array
 
+import Graphics.Gloss.Interface.Pure.Game
+
 --import Game
 --import Logic
 --import Rendering
@@ -24,7 +26,7 @@ data Game = Game { gameBoard :: Board
 n :: Int
 n = 25
 
-initialGame = Game { gameBoard = array indexRange $ zip (range indexRange) (repeat Nothing)
+initialGame = Game { gameBoard = (array indexRange $ zip (range indexRange) (repeat (Just Unrevealed))) // [((1, 3), Just Revealed)]
                    , gameState = Running
                    , gameCellState = Unrevealed -- | add MinesFound
                    , gameMinesFound = Found
@@ -32,24 +34,32 @@ initialGame = Game { gameBoard = array indexRange $ zip (range indexRange) (repe
     where indexRange = ((0, 0), (n - 1, n - 1))
 
 boardAsRunningPicture board =
-    pictures [ color boardGridColor $ boardGrid ]
+    pictures [ color boardGridColor $ boardGrid
+             , color unrevealedColor $ unrevealedCellsOfBoard board
+             , color revealedColor $ revealedCellsOfBoard board
+             ]
 
 boardGridColor = makeColorI 0 0 0 255
-foundColor = makeColorI 255 50 50 255
-diedColor = makeColorI 50 100 255 255
+foundColor = makeColorI 50 100 255 255
+diedColor = makeColorI 255 50 50 255
+unrevealedColor = makeColorI 173 173 173 255
+revealedColor = makeColorI 221 221 221 255
 
 outcomeColor (Just Found) = foundColor
 outcomeColor (Just Died) = diedColor
+outcomeColor Nothing = greyN 0.5
 
 snapPictureToCell picture (row, column) = translate x y picture
     where x = fromIntegral column * cellWidth + cellWidth * 0.5
           y = fromIntegral row * cellHeight + cellHeight * 0.5
 
 unrevealedCell :: Picture
-unrevealedCell = Blank
+unrevealedCell = rectangleSolid side 24.0
+    where side = min cellWidth cellHeight * 0.95
 
 revealedCell :: Picture
-revealedCell = Blank
+revealedCell = rectangleSolid side 24.0
+    where side = min cellWidth cellHeight * 0.95
 
 flaggedCell :: Picture
 flaggedCell = Blank
@@ -95,8 +105,6 @@ boardAsPicture board =
              , mineCellOfBoard board
              , boardGrid]
 
---outcomeColor (Just
-
 boardAsGameOverPicture winner board = color (outcomeColor winner) (boardAsPicture board)
 
 gameAsPicture :: Game -> Picture
@@ -106,6 +114,30 @@ gameAsPicture game = translate (fromIntegral screenWidth * (-0.5))
     where frame = case gameState game of
                     Running -> boardAsRunningPicture (gameBoard game)
                     GameOver winner -> boardAsGameOverPicture winner (gameBoard game)
+
+-- Logic
+
+isCoordCorrect = inRange ((0, 0), (n - 1, n - 1))
+
+playerTurn :: Game -> (Int, Int) -> Game
+playerTurn game cellCoord
+    | isCoordCorrect cellCoord && board ! cellCoord == Just Unrevealed =
+        game { gameBoard = board // [(cellCoord, Just Revealed)] }
+    | otherwise = game
+    where board = gameBoard game
+
+
+
+mousePosAsCellCoord :: (Float, Float) -> (Int, Int)
+mousePosAsCellCoord (x, y) = ( floor ((y + (fromIntegral screenHeight * 0.5)) / cellHeight)
+                             , floor ((x + (fromIntegral screenWidth * 0.5)) / cellWidth)
+                             )
+
+updateGame (EventKey (MouseButton LeftButton) Up _ mousePos) game =
+    case gameState game of
+      Running -> playerTurn game $ mousePosAsCellCoord mousePos
+      GameOver _ -> initialGame
+updateGame _ game = game
 
 -- Game
 
@@ -122,9 +154,8 @@ cellHeight :: Float
 cellHeight = fromIntegral screenHeight / fromIntegral n
 
 window = InWindow "Minesweeper" (screenWidth, screenHeight) (100, 100)
-background = makeColor 255 255 255 255
+background = makeColor 221 221 221 255
 fps = 30
-updateGame _ game = game
 
 main :: IO ()
 main = play window background fps initialGame gameAsPicture updateGame (const id)
